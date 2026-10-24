@@ -20,33 +20,43 @@ public class DeviceRepository {
      * Accounts are bound to one app install, so its current push token replaces any older one.
      * A token that moved here from another account (reinstall) is taken over.
      */
-    void replacePushToken(UUID accountId, Platform platform, String pushToken, OffsetDateTime now) {
+    void replacePushToken(UUID accountId, Platform platform, String pushToken, ApnsEnvironment apnsEnvironment,
+            OffsetDateTime now) {
         jdbc.sql("DELETE FROM devices WHERE account_id = :accountId AND push_token <> :pushToken")
                 .param("accountId", accountId)
                 .param("pushToken", pushToken)
                 .update();
         jdbc.sql("""
-                INSERT INTO devices (id, account_id, platform, push_token, updated_at)
-                VALUES (:id, :accountId, :platform, :pushToken, :now)
+                INSERT INTO devices (id, account_id, platform, push_token, apns_environment, updated_at)
+                VALUES (:id, :accountId, :platform, :pushToken, :apnsEnvironment, :now)
                 ON CONFLICT (push_token) DO UPDATE
-                SET account_id = EXCLUDED.account_id, platform = EXCLUDED.platform, updated_at = EXCLUDED.updated_at
+                SET account_id = EXCLUDED.account_id, platform = EXCLUDED.platform,
+                    apns_environment = EXCLUDED.apns_environment, updated_at = EXCLUDED.updated_at
                 """)
                 .param("id", UUID.randomUUID())
                 .param("accountId", accountId)
                 .param("platform", platform.name())
                 .param("pushToken", pushToken)
+                .param("apnsEnvironment", apnsEnvironment == null ? null : apnsEnvironment.name())
                 .param("now", now)
                 .update();
     }
 
     public List<Device> findByAccount(UUID accountId) {
-        return jdbc.sql("SELECT id, account_id, platform, push_token FROM devices WHERE account_id = :accountId")
+        return jdbc.sql("""
+                SELECT id, account_id, platform, push_token, apns_environment FROM devices
+                WHERE account_id = :accountId
+                """)
                 .param("accountId", accountId)
-                .query((rs, row) -> new Device(
-                        rs.getObject("id", UUID.class),
-                        rs.getObject("account_id", UUID.class),
-                        Platform.valueOf(rs.getString("platform")),
-                        rs.getString("push_token")))
+                .query((rs, row) -> {
+                    String apnsEnvironment = rs.getString("apns_environment");
+                    return new Device(
+                            rs.getObject("id", UUID.class),
+                            rs.getObject("account_id", UUID.class),
+                            Platform.valueOf(rs.getString("platform")),
+                            rs.getString("push_token"),
+                            apnsEnvironment == null ? null : ApnsEnvironment.valueOf(apnsEnvironment));
+                })
                 .list();
     }
 

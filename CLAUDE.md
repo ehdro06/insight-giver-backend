@@ -19,7 +19,7 @@ Package by feature under `com.insightgiver`:
 - `entry` — entries API, Redis queue, dispatcher, `@Async` embedding worker, pending-entry sweeper
 - `embedding` — `EmbeddingClient` (Voyage, offline hashing stand-in)
 - `insight` — hourly `@Scheduled` job, fuzzy recall, Claude/template writers, teaser policy, push payload
-- `push` — `PushGateway` (FCM, logging)
+- `push` — `PushGateway` routed by platform: FCM for Android, APNs (HTTP/2, .p8 token auth) for iOS, logging
 - `support`, `config` — small shared helpers
 
 ## Conventions

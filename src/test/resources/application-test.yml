@@ -7,4 +7,7 @@ insight-giver:
   insights:
     writer: template
   push:
-    provider: log
+    android:
+      provider: log
+    ios:
+      provider: log

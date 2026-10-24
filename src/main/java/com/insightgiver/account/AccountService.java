@@ -48,11 +48,17 @@ public class AccountService {
         return id;
     }
 
+    /** @param apnsEnvironment ignored for Android; defaults to production for iOS */
     @Transactional
-    public void updateDevice(UUID accountId, Platform platform, String pushToken, ZoneId timeZone) {
+    public void updateDevice(UUID accountId, Platform platform, String pushToken, ApnsEnvironment apnsEnvironment,
+            ZoneId timeZone) {
         accounts.updateTimeZone(accountId, timeZone);
         if (pushToken != null) {
-            devices.replacePushToken(accountId, platform, pushToken, Times.now(clock));
+            ApnsEnvironment environment = switch (platform) {
+                case IOS -> apnsEnvironment == null ? ApnsEnvironment.PRODUCTION : apnsEnvironment;
+                case ANDROID -> null;
+            };
+            devices.replacePushToken(accountId, platform, pushToken, environment, Times.now(clock));
         }
     }
 }

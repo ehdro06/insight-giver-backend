@@ -8,27 +8,48 @@ import jakarta.validation.constraints.NotNull;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.validation.annotation.Validated;
 
+/**
+ * Android pushes go through FCM, iOS pushes straight to APNs.
+ *
+ * @param ttl how long FCM and APNs keep trying to deliver; tomorrow's insight replaces it anyway
+ */
 @Validated
 @ConfigurationProperties("insight-giver.push")
-public record PushProperties(@NotNull Provider provider, @Valid @NotNull Fcm fcm) {
+public record PushProperties(@NotNull Duration ttl, @Valid @NotNull Android android, @Valid @NotNull Ios ios) {
 
-    public enum Provider {
-        FCM,
-        /** Logs pushes instead of sending them. */
-        LOG
+    /**
+     * @param credentialsFile service-account JSON; Application Default Credentials when blank
+     * @param priority        HIGH wakes dozing devices, but FCM deprioritizes apps whose high-priority
+     *                        pushes never show a notification, so NORMAL is the safe default
+     */
+    public record Android(@NotNull Provider provider, String credentialsFile, @NotNull Priority priority) {
+
+        public enum Provider {
+            FCM,
+            /** Logs pushes instead of sending them. */
+            LOG
+        }
+
+        public enum Priority {
+            NORMAL,
+            HIGH
+        }
     }
 
     /**
-     * @param credentialsFile  service-account JSON; Application Default Credentials when blank
-     * @param ttl              how long FCM/APNs keep trying to deliver; tomorrow's insight replaces it anyway
-     * @param androidPriority  HIGH wakes dozing devices, but FCM deprioritizes apps whose high-priority
-     *                         pushes never show a notification, so NORMAL is the safe default
+     * Token-based APNs authentication with a .p8 key from the Apple Developer portal.
+     *
+     * @param privateKey     the key's PEM contents; takes precedence over {@code privateKeyFile}
+     * @param privateKeyFile path to the .p8 file
+     * @param topic          the app's bundle id
      */
-    public record Fcm(String credentialsFile, @NotNull Duration ttl, @NotNull AndroidPriority androidPriority) {
+    public record Ios(@NotNull Provider provider, String teamId, String keyId, String privateKey, String privateKeyFile,
+            String topic) {
 
-        public enum AndroidPriority {
-            NORMAL,
-            HIGH
+        public enum Provider {
+            APNS,
+            /** Logs pushes instead of sending them. */
+            LOG
         }
     }
 }

@@ -3,6 +3,7 @@ package com.insightgiver.account;
 import java.time.DateTimeException;
 import java.time.ZoneId;
 import java.util.UUID;
+import java.util.regex.Pattern;
 
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
@@ -29,10 +30,16 @@ class AccountController {
     record CreateAccountResponse(UUID accountId, String token) {
     }
 
-    /** Sent on every app launch; {@code pushToken} is null when the device has no FCM token (yet). */
+    /**
+     * Sent on every app launch. {@code pushToken} is the FCM token on Android and the APNs device
+     * token (hex) on iOS, or null while the device has none yet.
+     */
     record DeviceRequest(@NotNull Platform platform, @Size(min = 1, max = 4096) String pushToken,
-            @NotBlank @Size(max = 64) String timeZone) {
+            ApnsEnvironment apnsEnvironment, @NotBlank @Size(max = 64) String timeZone) {
     }
+
+    /** APNs device tokens are hex, and they end up in the APNs request path. */
+    private static final Pattern APNS_TOKEN = Pattern.compile("[0-9a-fA-F]{64,200}");
 
     private final AccountService accounts;
 
@@ -50,7 +57,12 @@ class AccountController {
     @PutMapping("/me/device")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     void updateDevice(@AuthenticationPrincipal AuthenticatedAccount account, @Valid @RequestBody DeviceRequest request) {
-        accounts.updateDevice(account.id(), request.platform(), request.pushToken(), parseTimeZone(request.timeZone()));
+        if (request.platform() == Platform.IOS && request.pushToken() != null
+                && !APNS_TOKEN.matcher(request.pushToken()).matches()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Not an APNs device token");
+        }
+        accounts.updateDevice(account.id(), request.platform(), request.pushToken(), request.apnsEnvironment(),
+                parseTimeZone(request.timeZone()));
     }
 
     private static ZoneId parseTimeZone(String timeZone) {

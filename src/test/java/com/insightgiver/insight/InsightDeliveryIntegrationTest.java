@@ -57,7 +57,7 @@ class InsightDeliveryIntegrationTest {
     @Test
     void entriesAreEmbeddedInTheBackgroundAndRecalledIntoOneInsightADay() throws Exception {
         Session session = api.register("Asia/Seoul");
-        api.registerDevice(session, "IOS", "fcm-" + session.accountId(), "Asia/Seoul");
+        api.registerDevice(session, "IOS", "Asia/Seoul");
         writeDiary(session);
 
         scheduler.deliverDueInsights();
@@ -86,7 +86,7 @@ class InsightDeliveryIntegrationTest {
     void waitsForTheLocalDeliveryHour() throws Exception {
         clock.set(Instant.parse("2026-10-23T11:00:00Z")); // 07:00 in New York
         Session session = api.register("America/New_York");
-        api.registerDevice(session, "ANDROID", "fcm-" + session.accountId(), "America/New_York");
+        api.registerDevice(session, "ANDROID", "America/New_York");
         writeDiary(session);
 
         scheduler.deliverDueInsights();
@@ -100,7 +100,7 @@ class InsightDeliveryIntegrationTest {
     @Test
     void teasesSomeoneWhoHasNotOpenedTheAppForAWhile() throws Exception {
         Session session = api.register("Asia/Seoul");
-        api.registerDevice(session, "IOS", "fcm-" + session.accountId(), "Asia/Seoul");
+        api.registerDevice(session, "IOS", "Asia/Seoul");
         writeDiary(session);
         jdbc.sql("UPDATE accounts SET last_seen_at = :seen WHERE id = :id")
                 .param("seen", OffsetDateTime.ofInstant(NOW.minus(5, DAYS), ZoneOffset.UTC))
@@ -117,7 +117,7 @@ class InsightDeliveryIntegrationTest {
     @Test
     void needsAFewEntriesBeforeTheFirstInsight() throws Exception {
         Session session = api.register("Asia/Seoul");
-        api.registerDevice(session, "IOS", "fcm-" + session.accountId(), "Asia/Seoul");
+        api.registerDevice(session, "IOS", "Asia/Seoul");
         api.postEntry(session, "only-1", "First day with the app", NOW.minus(3, DAYS));
         api.postEntry(session, "only-2", "Second day, still not sure what to write", NOW.minus(1, DAYS));
         awaitEmbedded(session.accountId(), 2);

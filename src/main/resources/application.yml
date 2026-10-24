@@ -79,10 +79,20 @@ insight-giver:
     max-tokens: 16000
     timeout: 120s
   push:
-    # fcm | log
-    provider: ${PUSH_PROVIDER:fcm}
-    fcm:
+    ttl: 24h
+    android:
+      # fcm | log
+      provider: ${ANDROID_PUSH_PROVIDER:fcm}
       # Service-account JSON. When blank, Google Application Default Credentials are used.
       credentials-file: ${FIREBASE_CREDENTIALS_FILE:}
-      ttl: 24h
-      android-priority: normal
+      priority: normal
+    ios:
+      # apns | log
+      provider: ${IOS_PUSH_PROVIDER:apns}
+      team-id: ${APNS_TEAM_ID:}
+      key-id: ${APNS_KEY_ID:}
+      # The .p8 auth key: its PEM contents, or a path to the file.
+      private-key: ${APNS_PRIVATE_KEY:}
+      private-key-file: ${APNS_PRIVATE_KEY_FILE:}
+      # The app's bundle id.
+      topic: ${APNS_TOPIC:com.insightgiver.app}

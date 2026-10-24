@@ -6,7 +6,10 @@ insight-giver:
   insights:
     writer: ${INSIGHT_WRITER:template}
   push:
-    provider: ${PUSH_PROVIDER:log}
+    android:
+      provider: ${ANDROID_PUSH_PROVIDER:log}
+    ios:
+      provider: ${IOS_PUSH_PROVIDER:log}
 
 logging:
   level:

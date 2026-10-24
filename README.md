@@ -5,7 +5,7 @@ and expects no reply. In the background every entry is embedded, and once a day 
 an older memory related to something recent, has Claude word the connection as a short note, and
 sends it to the app's home-screen widget as a silent push.
 
-Java 21 · Spring Boot 4.1 · PostgreSQL + pgvector · Redis · Firebase Cloud Messaging · Claude
+Java 21 · Spring Boot 4.1 · PostgreSQL + pgvector · Redis · FCM (Android) · APNs (iOS) · Claude
 
 ## How it works
 
@@ -22,7 +22,7 @@ app ── POST /api/v1/entries ──▶ Postgres (entry, PENDING) ──▶ Re
       ├─ FuzzyRecall: recent entry ─▶ blurred vector ─▶ pgvector nearest older entries ─▶ sampled memory
       ├─ InsightWriter (Claude) ─▶ short note in the person's language
       ├─ TeaserPolicy ─▶ sometimes a truncated preview for the widget
-      └─ PushGateway (FCM) ─▶ data-only push, handled natively by the app
+      └─ PushGateway ─▶ FCM (Android) / APNs (iOS) silent push, handled natively by the app
 ```
 
 - **Ingestion.** `POST /api/v1/entries` stores the entry as `PENDING` and pushes its id onto a Redis
@@ -54,18 +54,22 @@ All endpoints except account creation need `Authorization: Bearer <token>`.
 | Method | Path                      | Purpose                                                                  |
 | ------ | ------------------------- | ------------------------------------------------------------------------ |
 | POST   | `/api/v1/accounts`        | `{timeZone}` → `{accountId, token}`. Anonymous, device-bound account.    |
-| PUT    | `/api/v1/me/device`       | `{platform, pushToken, timeZone}`. Sent on every app launch.             |
+| PUT    | `/api/v1/me/device`       | `{platform, pushToken, apnsEnvironment, timeZone}`. Sent on every launch. |
 | POST   | `/api/v1/entries`         | `{clientId, content, writtenAt}` → `202 {id, clientId, status}`.         |
 | GET    | `/api/v1/insights/latest` | `{id, body, createdAt}`, or `204` before the first insight.              |
 | GET    | `/actuator/health`        | Liveness and readiness.                                                  |
 
-Only the SHA-256 of each token is stored. Errors are RFC 9457 problem details.
+Only the SHA-256 of each token is stored. Errors are RFC 9457 problem details. `pushToken` is the
+FCM registration token on Android and the hex APNs device token on iOS, where `apnsEnvironment`
+(`SANDBOX` for development-signed builds, otherwise `PRODUCTION`) picks the APNs host.
 
 ### Push payload
 
-Insights go out as FCM data-only messages (APNs `content-available`, push type `background`,
-priority 5). The app's native handlers read these keys directly, so they are a contract with
-`insight-giver-mobile/modules/insight-native`; change both sides together.
+Android gets an FCM data-only message. iOS gets an APNs background push (`content-available`, push
+type `background`, priority 5) sent straight to Apple over HTTP/2 with token-based (.p8)
+authentication; the keys below sit next to `aps` at the top level. The app's native handlers read
+them directly, so they are a contract with `insight-giver-mobile/modules/insight-native`; change
+both sides together.
 
 | Key         | Value                                                         |
 | ----------- | ------------------------------------------------------------- |
@@ -112,8 +116,12 @@ providers and fails at startup if a key is missing.
 | `VOYAGE_API_KEY`            |                                                | Voyage AI, model `voyage-4-lite` at 1024 dimensions     |
 | `INSIGHT_WRITER`            | `claude`                                       | `claude` or `template`                                  |
 | `ANTHROPIC_API_KEY`         |                                                | if unset, the SDK's other credential sources are tried  |
-| `PUSH_PROVIDER`             | `fcm`                                          | `fcm` or `log`                                          |
+| `ANDROID_PUSH_PROVIDER`     | `fcm`                                          | `fcm` or `log`                                          |
 | `FIREBASE_CREDENTIALS_FILE` |                                                | service-account JSON; Application Default Credentials when unset |
+| `IOS_PUSH_PROVIDER`         | `apns`                                         | `apns` or `log`                                         |
+| `APNS_TEAM_ID`, `APNS_KEY_ID` |                                              | from the Apple Developer portal (Keys)                  |
+| `APNS_PRIVATE_KEY`          |                                                | the .p8 key's contents, or `APNS_PRIVATE_KEY_FILE` with its path |
+| `APNS_TOPIC`                | `com.insightgiver.app`                         | the app's bundle id                                     |
 
 Insights are written by `claude-opus-5-5` with adaptive thinking at `medium` effort
 (`insight-giver.claude.*`). Requests opt into Anthropic's server-side refusal fallback

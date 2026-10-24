@@ -35,7 +35,7 @@ public class TestFixtures {
 
         private volatile Instant now;
 
-        MutableClock(Instant now) {
+        public MutableClock(Instant now) {
             this.now = now;
         }
 
