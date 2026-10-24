@@ -1,0 +1,10 @@
+insight-giver:
+  # Tests drive the sweeper and the insight job directly.
+  scheduling:
+    enabled: false
+  embedding:
+    provider: hashing
+  insights:
+    writer: template
+  push:
+    provider: log

@@ -1,0 +1,13 @@
+# Runs the whole pipeline offline against `docker compose up`: no API keys or Firebase project needed.
+#   ./mvnw spring-boot:run -Dspring-boot.run.profiles=local
+insight-giver:
+  embedding:
+    provider: ${EMBEDDING_PROVIDER:hashing}
+  insights:
+    writer: ${INSIGHT_WRITER:template}
+  push:
+    provider: ${PUSH_PROVIDER:log}
+
+logging:
+  level:
+    com.insightgiver: debug

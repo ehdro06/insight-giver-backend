@@ -1,0 +1,88 @@
+spring:
+  application:
+    name: insight-giver-backend
+  threads:
+    virtual:
+      enabled: true
+  datasource:
+    url: ${DATABASE_URL:jdbc:postgresql://localhost:5432/insight_giver}
+    username: ${DATABASE_USERNAME:insight_giver}
+    password: ${DATABASE_PASSWORD:insight_giver}
+  data:
+    redis:
+      url: ${REDIS_URL:redis://localhost:6379}
+      lettuce:
+        pool:
+          # Blocking pops (BRPOP) borrow a dedicated connection from this pool.
+          enabled: true
+          max-active: 8
+  mvc:
+    problemdetails:
+      enabled: true
+  lifecycle:
+    timeout-per-shutdown-phase: 20s
+
+server:
+  shutdown: graceful
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      probes:
+        enabled: true
+
+insight-giver:
+  queue:
+    key: insight-giver:entries:pending
+    poll-timeout: 2s
+    worker-threads: 4
+    sweep-interval: 5m
+    stale-after: 2m
+    retry-backoff: 1m
+    max-retry-backoff: 6h
+    max-attempts: 8
+  embedding:
+    # voyage | hashing. hashing is a deterministic, offline stand-in for development and tests.
+    provider: ${EMBEDDING_PROVIDER:voyage}
+    voyage:
+      api-key: ${VOYAGE_API_KEY:}
+      model: voyage-4-lite
+      base-url: https://api.voyageai.com/v1
+      timeout: 20s
+  insights:
+    # Checked hourly; each account gets at most one insight per local day, at or after delivery-hour.
+    cron: "0 0 * * * *"
+    delivery-hour: 9
+    concurrency: 4
+    min-entries: 3
+    seed-window: 7d
+    memory-gap: 2d
+    candidates: 8
+    blur: 0.5
+    temperature: 0.08
+    inactive-after: 30d
+    max-length: 500
+    # claude | template
+    writer: ${INSIGHT_WRITER:claude}
+    teaser:
+      away-after: 2d
+      probability: 0.25
+  claude:
+    # Falls back to the SDK's environment lookup (ANTHROPIC_API_KEY, ANTHROPIC_AUTH_TOKEN, ...) when blank.
+    api-key: ${ANTHROPIC_API_KEY:}
+    model: claude-opus-5-5
+    effort: medium
+    max-tokens: 16000
+    timeout: 120s
+  push:
+    # fcm | log
+    provider: ${PUSH_PROVIDER:fcm}
+    fcm:
+      # Service-account JSON. When blank, Google Application Default Credentials are used.
+      credentials-file: ${FIREBASE_CREDENTIALS_FILE:}
+      ttl: 24h
+      android-priority: normal

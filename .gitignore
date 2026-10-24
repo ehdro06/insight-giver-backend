@@ -1,0 +1,17 @@
+target/
+
+# IDEs
+.idea/
+*.iml
+.vscode/
+.classpath
+.project
+.settings/
+.factorypath
+
+# Local secrets
+.env
+*.local.yml
+firebase-service-account*.json
+
+.DS_Store
