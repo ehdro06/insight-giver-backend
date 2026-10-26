@@ -58,7 +58,7 @@ class TeaserPolicyTest {
     }
 
     private static TeaserPolicy policy(double probability) {
-        return new TeaserPolicy(new InsightProperties("0 0 * * * *", 9, 1, 3, Duration.ofDays(7), Duration.ofDays(2), 8,
+        return new TeaserPolicy(new InsightProperties("0 */5 * * * *", DeliveryScheduleTest.DELIVERY, 1, 3, Duration.ofDays(7), Duration.ofDays(2), 8,
                 0.5, 0.08, Duration.ofDays(30), 500, InsightProperties.Writer.TEMPLATE,
                 new InsightProperties.Teaser(Duration.ofDays(2), probability)));
     }

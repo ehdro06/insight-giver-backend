@@ -3,7 +3,6 @@ package com.insightgiver.insight;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.OffsetDateTime;
-import java.time.ZonedDateTime;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -19,10 +18,10 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 /**
- * The daily insight batch. It wakes up on {@code insight-giver.insights.cron} (hourly by default)
- * and serves every account whose local delivery hour has passed today without an insight, so
- * each person gets theirs in the morning of their own time zone, and a failed attempt is simply
- * retried by the next run.
+ * The daily insight batch. It wakes up on {@code insight-giver.insights.cron} (every five minutes
+ * by default) and serves every account whose delivery time has passed today, in its own time zone,
+ * without an insight yet (see {@link DeliverySchedule}). A failed attempt is retried by a later
+ * run once the account's back-off has passed.
  */
 @Component
 class InsightScheduler {
@@ -34,12 +33,15 @@ class InsightScheduler {
 
     private final AccountRepository accounts;
     private final InsightService insights;
+    private final DeliverySchedule schedule;
     private final InsightProperties properties;
     private final Clock clock;
 
-    InsightScheduler(AccountRepository accounts, InsightService insights, InsightProperties properties, Clock clock) {
+    InsightScheduler(AccountRepository accounts, InsightService insights, DeliverySchedule schedule,
+            InsightProperties properties, Clock clock) {
         this.accounts = accounts;
         this.insights = insights;
+        this.schedule = schedule;
         this.properties = properties;
         this.clock = clock;
     }
@@ -67,18 +69,9 @@ class InsightScheduler {
     }
 
     List<InsightCandidate> findDue(OffsetDateTime now) {
-        return accounts.findInsightCandidates(now.minus(properties.inactiveAfter()), now.minus(MIN_SPACING))
+        return accounts.findInsightCandidates(now.minus(properties.inactiveAfter()), now.minus(MIN_SPACING), now)
                 .stream()
-                .filter(account -> isDue(account, now))
+                .filter(account -> schedule.isDue(account, now))
                 .toList();
-    }
-
-    private boolean isDue(InsightCandidate account, OffsetDateTime now) {
-        ZonedDateTime local = now.atZoneSameInstant(account.timeZone());
-        OffsetDateTime slot = local.toLocalDate()
-                .atTime(properties.deliveryHour(), 0)
-                .atZone(account.timeZone())
-                .toOffsetDateTime();
-        return !now.isBefore(slot) && (account.lastInsightAt() == null || account.lastInsightAt().isBefore(slot));
     }
 }

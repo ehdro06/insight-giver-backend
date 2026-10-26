@@ -53,6 +53,20 @@ public final class ApiClient {
                 .exchange();
     }
 
+    public MvcTestResult delivery(Session session) {
+        return mvc.get().uri("/api/v1/me/delivery")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + session.token())
+                .exchange();
+    }
+
+    public MvcTestResult putDelivery(Session session, String json) {
+        return mvc.put().uri("/api/v1/me/delivery")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + session.token())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(json)
+                .exchange();
+    }
+
     /** Posts an entry and returns the id the server assigned. */
     public UUID postEntry(Session session, String clientId, String content, Instant writtenAt) throws Exception {
         MvcTestResult result = mvc.post().uri("/api/v1/entries")

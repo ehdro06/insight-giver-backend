@@ -75,7 +75,8 @@ public class InsightService {
         try {
             insight = create(account, recollection.get(), now);
         } catch (RuntimeException e) {
-            accounts.releaseInsightSlot(account.id(), now, account.lastInsightAt());
+            accounts.releaseInsightSlot(account.id(), now, account.lastInsightAt(),
+                    now.plus(properties.delivery().retryAfter()));
             throw e;
         }
         // A failed push keeps the insight: the app shows the latest one whenever it is opened.

@@ -17,7 +17,7 @@ app ── POST /api/v1/entries ──▶ Postgres (entry, PENDING) ──▶ Re
                                    ▼
                 @Async EntryEmbeddingWorker ── EmbeddingClient ──▶ entries.embedding (vector(1024))
 
-@Scheduled InsightScheduler (hourly) ── accounts whose local delivery hour has passed today
+@Scheduled InsightScheduler (every 5 min) ── accounts whose delivery time has passed today
       │
       ├─ FuzzyRecall: recent entry ─▶ blurred vector ─▶ pgvector nearest older entries ─▶ sampled memory
       ├─ InsightWriter (Claude) ─▶ short note in the person's language
@@ -39,10 +39,17 @@ app ── POST /api/v1/entries ──▶ Postgres (entry, PENDING) ──▶ Re
   (`temperature`). The same diary yields different but related connections from day to day.
   Searches are exact and scoped to one account; an ANN index would filter by account only after the
   approximate search and silently drop results (see `V1__init.sql`).
-- **Delivery.** The job runs hourly and serves every account whose local `delivery-hour` has passed
-  today without an insight, so each person gets theirs in their own morning, and a failed attempt is
-  retried by the next run. An atomic claim on `accounts.last_insight_at` keeps parallel runs and
-  multiple instances from double-sending.
+- **Delivery.** Each account picks when in its own day the insight comes (`PUT /api/v1/me/delivery`):
+  - `MORNING` (default): at `delivery.morning`, 09:00.
+  - `FIXED`: at a time the person picked, on a quarter hour.
+  - `SURPRISE`: at a different time every day between `delivery.surprise-from` and `surprise-to`
+    (09:00–21:00). `DeliverySchedule` derives it from the account id and the date, so every run and
+    instance agrees on today's time without storing it.
+
+  The job runs every five minutes and serves each account whose time has passed today, in its own
+  time zone, with no insight yet that local day and none in the last 12 hours. A failed attempt
+  waits `delivery.retry-after` (30 min) before the next try. An atomic claim on
+  `accounts.last_insight_at` keeps parallel runs and multiple instances from double-sending.
 - **Anti-throttling teasers.** iOS and Android ration background pushes by how much the app is
   used. When someone hasn't opened the app for `teaser.away-after` (and at random otherwise), the
   push carries a truncated `preview`; the widget shows only that until the app is opened.
@@ -55,6 +62,8 @@ All endpoints except account creation need `Authorization: Bearer <token>`.
 | ------ | ------------------------- | ------------------------------------------------------------------------ |
 | POST   | `/api/v1/accounts`        | `{timeZone}` → `{accountId, token}`. Anonymous, device-bound account.    |
 | PUT    | `/api/v1/me/device`       | `{platform, pushToken, apnsEnvironment, timeZone}`. Sent on every launch. |
+| GET    | `/api/v1/me/delivery`     | `{mode, time}`: when the daily insight comes.                            |
+| PUT    | `/api/v1/me/delivery`     | `{mode, time}`, `mode` one of `MORNING`, `FIXED`, `SURPRISE`; `time` is `HH:mm` on a quarter hour. Without `time` the earlier one is kept, so a switch back to `FIXED` needs none. |
 | POST   | `/api/v1/entries`         | `{clientId, content, writtenAt}` → `202 {id, clientId, status}`.         |
 | GET    | `/api/v1/insights/latest` | `{id, body, createdAt}`, or `204` before the first insight.              |
 | GET    | `/actuator/health`        | Liveness and readiness.                                                  |
@@ -100,8 +109,13 @@ curl -s -X POST localhost:8080/api/v1/entries -H "Authorization: Bearer $TOKEN" 
   -d '{"clientId":"1","content":"Ran by the river, head felt clear","writtenAt":"2026-10-01T08:00:00Z"}'
 ```
 
-To watch an insight being made without waiting for the hourly run, start the app with
-`INSIGHT_GIVER_INSIGHTS_CRON='*/30 * * * * *'` in the environment.
+An insight comes once the account's delivery time has passed; with the default `MORNING` mode, test
+after 09:00 in the account's time zone, or switch it to a time that has already passed today:
+
+```sh
+curl -s -X PUT localhost:8080/api/v1/me/delivery -H "Authorization: Bearer $TOKEN" \
+  -H 'Content-Type: application/json' -d '{"mode":"FIXED","time":"00:00"}'
+```
 
 ## Configuration
 

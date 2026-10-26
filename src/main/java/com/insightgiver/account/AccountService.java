@@ -48,6 +48,14 @@ public class AccountService {
         return id;
     }
 
+    public DeliveryPreferences deliveryPreferences(UUID accountId) {
+        return accounts.findDeliveryPreferences(accountId).orElseThrow();
+    }
+
+    public void updateDeliveryPreferences(UUID accountId, DeliveryPreferences preferences) {
+        accounts.updateDeliveryPreferences(accountId, preferences);
+    }
+
     /** @param apnsEnvironment ignored for Android; defaults to production for iOS */
     @Transactional
     public void updateDevice(UUID accountId, Platform platform, String pushToken, ApnsEnvironment apnsEnvironment,

@@ -1,7 +1,10 @@
 package com.insightgiver.account;
 
 import java.time.DateTimeException;
+import java.time.LocalTime;
 import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
 import java.util.UUID;
 import java.util.regex.Pattern;
 
@@ -12,6 +15,7 @@ import jakarta.validation.constraints.Size;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -38,6 +42,20 @@ class AccountController {
             ApnsEnvironment apnsEnvironment, @NotBlank @Size(max = 64) String timeZone) {
     }
 
+    /** @param time local {@code HH:mm} on a quarter hour; when omitted, the time picked before is kept */
+    record DeliveryRequest(@NotNull DeliveryMode mode, @Size(max = 5) String time) {
+    }
+
+    record DeliveryResponse(DeliveryMode mode, String time) {
+
+        static DeliveryResponse of(DeliveryPreferences preferences) {
+            LocalTime time = preferences.time();
+            return new DeliveryResponse(preferences.mode(), time == null ? null : time.format(HH_MM));
+        }
+    }
+
+    private static final DateTimeFormatter HH_MM = DateTimeFormatter.ofPattern("HH:mm");
+
     /** APNs device tokens are hex, and they end up in the APNs request path. */
     private static final Pattern APNS_TOKEN = Pattern.compile("[0-9a-fA-F]{64,200}");
 
@@ -63,6 +81,41 @@ class AccountController {
         }
         accounts.updateDevice(account.id(), request.platform(), request.pushToken(), request.apnsEnvironment(),
                 parseTimeZone(request.timeZone()));
+    }
+
+    @GetMapping("/me/delivery")
+    DeliveryResponse delivery(@AuthenticationPrincipal AuthenticatedAccount account) {
+        return DeliveryResponse.of(accounts.deliveryPreferences(account.id()));
+    }
+
+    @PutMapping("/me/delivery")
+    DeliveryResponse updateDelivery(@AuthenticationPrincipal AuthenticatedAccount account,
+            @Valid @RequestBody DeliveryRequest request) {
+        LocalTime time;
+        if (request.time() != null) {
+            time = parseTime(request.time());
+            if (!DeliveryPreferences.onGrid(time)) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "Delivery times fall on multiples of %d minutes".formatted(DeliveryPreferences.MINUTE_STEP));
+            }
+        } else {
+            // Switching modes keeps the time picked before, so going back to FIXED needs none.
+            time = accounts.deliveryPreferences(account.id()).time();
+        }
+        if (request.mode() == DeliveryMode.FIXED && time == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A fixed delivery needs a time");
+        }
+        DeliveryPreferences preferences = new DeliveryPreferences(request.mode(), time);
+        accounts.updateDeliveryPreferences(account.id(), preferences);
+        return DeliveryResponse.of(preferences);
+    }
+
+    private static LocalTime parseTime(String time) {
+        try {
+            return LocalTime.parse(time, HH_MM);
+        } catch (DateTimeParseException e) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Not an HH:mm time: " + time);
+        }
     }
 
     private static ZoneId parseTimeZone(String timeZone) {

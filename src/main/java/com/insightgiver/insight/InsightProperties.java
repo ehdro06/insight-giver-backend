@@ -1,6 +1,7 @@
 package com.insightgiver.insight;
 
 import java.time.Duration;
+import java.time.LocalTime;
 
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.DecimalMax;
@@ -16,7 +17,7 @@ import org.springframework.validation.annotation.Validated;
 
 /**
  * @param cron          when to look for accounts that are due (UTC)
- * @param deliveryHour  local hour from which an account's daily insight may be sent
+ * @param delivery      when in their local day accounts get their insight
  * @param concurrency   accounts processed in parallel during one run
  * @param minEntries    embedded entries an account needs before it gets insights
  * @param seedWindow    how recent the entry that seeds recall must be
@@ -32,7 +33,7 @@ import org.springframework.validation.annotation.Validated;
 @ConfigurationProperties("insight-giver.insights")
 public record InsightProperties(
         @NotBlank String cron,
-        @Min(0) @Max(23) int deliveryHour,
+        @Valid @NotNull Delivery delivery,
         @Min(1) int concurrency,
         @Min(2) int minEntries,
         @NotNull Duration seedWindow,
@@ -49,6 +50,18 @@ public record InsightProperties(
         CLAUDE,
         /** Fixed wording, no API calls: for development and tests. */
         TEMPLATE
+    }
+
+    /**
+     * Times are local to each account and fall on {@code DeliveryPreferences.MINUTE_STEP}.
+     *
+     * @param morning      for the MORNING mode
+     * @param surpriseFrom first possible time for the SURPRISE mode
+     * @param surpriseTo   end of the SURPRISE window (exclusive)
+     * @param retryAfter   pause before an account whose insight failed is tried again
+     */
+    public record Delivery(@NotNull LocalTime morning, @NotNull LocalTime surpriseFrom, @NotNull LocalTime surpriseTo,
+            @NotNull Duration retryAfter) {
     }
 
     /**

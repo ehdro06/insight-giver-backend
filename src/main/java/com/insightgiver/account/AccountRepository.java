@@ -1,6 +1,7 @@
 package com.insightgiver.account;
 
 import java.time.DateTimeException;
+import java.time.LocalTime;
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
@@ -15,7 +16,8 @@ import org.springframework.stereotype.Repository;
 public class AccountRepository {
 
     /** The parts of an account the daily insight job needs. */
-    public record InsightCandidate(UUID id, ZoneId timeZone, OffsetDateTime lastSeenAt, OffsetDateTime lastInsightAt) {
+    public record InsightCandidate(UUID id, ZoneId timeZone, DeliveryPreferences delivery, OffsetDateTime lastSeenAt,
+            OffsetDateTime lastInsightAt) {
     }
 
     private final JdbcClient jdbc;
@@ -59,20 +61,44 @@ public class AccountRepository {
                 .update();
     }
 
-    /** Accounts seen since {@code activeSince} that have had no insight since {@code noInsightSince}. */
-    public List<InsightCandidate> findInsightCandidates(OffsetDateTime activeSince, OffsetDateTime noInsightSince) {
+    Optional<DeliveryPreferences> findDeliveryPreferences(UUID id) {
+        return jdbc.sql("SELECT delivery_mode, delivery_time FROM accounts WHERE id = :id")
+                .param("id", id)
+                .query((rs, row) -> new DeliveryPreferences(DeliveryMode.valueOf(rs.getString("delivery_mode")),
+                        rs.getObject("delivery_time", LocalTime.class)))
+                .optional();
+    }
+
+    void updateDeliveryPreferences(UUID id, DeliveryPreferences preferences) {
+        jdbc.sql("UPDATE accounts SET delivery_mode = :mode, delivery_time = :time WHERE id = :id")
+                .param("id", id)
+                .param("mode", preferences.mode().name())
+                .param("time", preferences.time())
+                .update();
+    }
+
+    /**
+     * Accounts seen since {@code activeSince} that have had no insight since {@code noInsightSince}
+     * and are not backing off after a failed attempt.
+     */
+    public List<InsightCandidate> findInsightCandidates(OffsetDateTime activeSince, OffsetDateTime noInsightSince,
+            OffsetDateTime now) {
         return jdbc.sql("""
-                SELECT id, time_zone, last_seen_at, last_insight_at
+                SELECT id, time_zone, delivery_mode, delivery_time, last_seen_at, last_insight_at
                 FROM accounts
                 WHERE last_seen_at >= :activeSince
                   AND (last_insight_at IS NULL OR last_insight_at < :noInsightSince)
+                  AND (insight_retry_at IS NULL OR insight_retry_at <= :now)
                 ORDER BY id
                 """)
                 .param("activeSince", activeSince)
                 .param("noInsightSince", noInsightSince)
+                .param("now", now)
                 .query((rs, row) -> new InsightCandidate(
                         rs.getObject("id", UUID.class),
                         zoneOrUtc(rs.getString("time_zone")),
+                        new DeliveryPreferences(DeliveryMode.valueOf(rs.getString("delivery_mode")),
+                                rs.getObject("delivery_time", LocalTime.class)),
                         rs.getObject("last_seen_at", OffsetDateTime.class),
                         rs.getObject("last_insight_at", OffsetDateTime.class)))
                 .list();
@@ -93,7 +119,8 @@ public class AccountRepository {
      */
     public boolean claimInsightSlot(UUID id, OffsetDateTime seenLastInsightAt, OffsetDateTime now) {
         String guard = seenLastInsightAt == null ? "last_insight_at IS NULL" : "last_insight_at = :seen";
-        var statement = jdbc.sql("UPDATE accounts SET last_insight_at = :now WHERE id = :id AND " + guard)
+        String sql = "UPDATE accounts SET last_insight_at = :now, insight_retry_at = NULL WHERE id = :id AND " + guard;
+        var statement = jdbc.sql(sql)
                 .param("id", id)
                 .param("now", now);
         if (seenLastInsightAt != null) {
@@ -102,12 +129,16 @@ public class AccountRepository {
         return statement.update() == 1;
     }
 
-    /** Gives a claimed slot back after a failed attempt so the next run retries. */
-    public void releaseInsightSlot(UUID id, OffsetDateTime claimedAt, OffsetDateTime previous) {
-        jdbc.sql("UPDATE accounts SET last_insight_at = :previous WHERE id = :id AND last_insight_at = :claimedAt")
+    /** Gives a claimed slot back after a failed attempt so that a run from {@code retryAt} on tries again. */
+    public void releaseInsightSlot(UUID id, OffsetDateTime claimedAt, OffsetDateTime previous, OffsetDateTime retryAt) {
+        jdbc.sql("""
+                UPDATE accounts SET last_insight_at = :previous, insight_retry_at = :retryAt
+                WHERE id = :id AND last_insight_at = :claimedAt
+                """)
                 .param("id", id)
                 .param("claimedAt", claimedAt)
                 .param("previous", previous)
+                .param("retryAt", retryAt)
                 .update();
     }
 }

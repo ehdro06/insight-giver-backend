@@ -98,6 +98,43 @@ class InsightDeliveryIntegrationTest {
     }
 
     @Test
+    void followsThePickedTime() throws Exception {
+        Session session = api.register("Asia/Seoul");
+        api.registerDevice(session, "IOS", "Asia/Seoul");
+        assertThat(api.putDelivery(session, "{\"mode\":\"FIXED\",\"time\":\"21:30\"}")).hasStatusOk();
+        writeDiary(session);
+
+        scheduler.deliverDueInsights(); // 11:00 in Seoul
+        assertThat(pushesTo(session)).isEmpty();
+
+        clock.set(Instant.parse("2026-10-23T12:30:00Z")); // 21:30 in Seoul
+        scheduler.deliverDueInsights();
+        assertThat(pushesTo(session)).hasSize(1);
+    }
+
+    @Test
+    void anAccountBackingOffAfterAFailureIsSkippedUntilItsRetryTime() throws Exception {
+        Session session = api.register("Asia/Seoul");
+        api.registerDevice(session, "IOS", "Asia/Seoul");
+        writeDiary(session);
+        jdbc.sql("UPDATE accounts SET insight_retry_at = :retryAt WHERE id = :id")
+                .param("retryAt", OffsetDateTime.ofInstant(NOW.plus(Duration.ofMinutes(30)), ZoneOffset.UTC))
+                .param("id", session.accountId())
+                .update();
+
+        scheduler.deliverDueInsights();
+        assertThat(pushesTo(session)).isEmpty();
+
+        clock.set(NOW.plus(Duration.ofMinutes(30)));
+        scheduler.deliverDueInsights();
+        assertThat(pushesTo(session)).hasSize(1);
+        assertThat(jdbc.sql("SELECT insight_retry_at FROM accounts WHERE id = :id")
+                .param("id", session.accountId())
+                .query(OffsetDateTime.class)
+                .optional()).isEmpty();
+    }
+
+    @Test
     void teasesSomeoneWhoHasNotOpenedTheAppForAWhile() throws Exception {
         Session session = api.register("Asia/Seoul");
         api.registerDevice(session, "IOS", "Asia/Seoul");

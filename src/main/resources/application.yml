@@ -54,9 +54,14 @@ insight-giver:
       base-url: https://api.voyageai.com/v1
       timeout: 20s
   insights:
-    # Checked hourly; each account gets at most one insight per local day, at or after delivery-hour.
-    cron: "0 0 * * * *"
-    delivery-hour: 9
+    # Every account gets at most one insight per local day, once its delivery time has passed.
+    # Delivery times fall on quarter hours, so this must fire at least on every quarter hour.
+    cron: "0 */5 * * * *"
+    delivery:
+      morning: "09:00"
+      surprise-from: "09:00"
+      surprise-to: "21:00"
+      retry-after: 30m
     concurrency: 4
     min-entries: 3
     seed-window: 7d
