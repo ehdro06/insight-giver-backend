@@ -5,7 +5,8 @@ spring:
     virtual:
       enabled: true
   datasource:
-    url: ${DATABASE_URL:jdbc:postgresql://localhost:5432/insight_giver}
+    # A full JDBC URL, or its parts the way hosts such as Render hand them out.
+    url: ${DATABASE_URL:jdbc:postgresql://${DATABASE_HOST:localhost}:${DATABASE_PORT:5432}/${DATABASE_NAME:insight_giver}}
     username: ${DATABASE_USERNAME:insight_giver}
     password: ${DATABASE_PASSWORD:insight_giver}
   data:
@@ -23,6 +24,8 @@ spring:
     timeout-per-shutdown-phase: 20s
 
 server:
+  # Hosts such as Render say which port to listen on.
+  port: ${PORT:8080}
   shutdown: graceful
 
 management:

@@ -18,3 +18,10 @@ jobs:
           cache: maven
       # Integration tests start pgvector and Redis with Testcontainers (Docker is preinstalled on the runner).
       - run: ./mvnw -B verify
+
+  image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      # The image Render deploys (render.yaml); tests already ran in the job above.
+      - run: docker build --tag insight-giver-backend .

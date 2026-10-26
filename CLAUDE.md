@@ -9,6 +9,7 @@ architecture; this file is the working agreement.
 ./mvnw verify                                            # unit + Testcontainers integration tests (Docker required)
 ./mvnw test -Dtest=FuzzyRecallTest                       # one class
 docker compose up -d && ./mvnw spring-boot:run -Dspring-boot.run.profiles=local   # offline local run
+docker build .                                           # the production image (render.yaml deploys it)
 ```
 
 ## Layout

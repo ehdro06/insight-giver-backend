@@ -1,0 +1,64 @@
+# Render Blueprint: the API, its Postgres and the Redis-compatible queue, on one private network.
+# New > Blueprint in the Render dashboard, pick this repository, and fill in the secrets it asks for.
+# All three must share a region; singapore is the closest to Korea and Japan.
+services:
+  - type: web
+    name: insight-giver-api
+    runtime: docker
+    region: singapore
+    # 512 MB. The scheduler and the queue dispatcher run in-process, so the service must stay up:
+    # the free plan, which sleeps when idle, would miss deliveries.
+    plan: starter
+    numInstances: 1
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /actuator/health/readiness
+    envVars:
+      - key: DATABASE_HOST
+        fromDatabase: { name: insight-giver-db, property: host }
+      - key: DATABASE_PORT
+        fromDatabase: { name: insight-giver-db, property: port }
+      - key: DATABASE_NAME
+        fromDatabase: { name: insight-giver-db, property: database }
+      - key: DATABASE_USERNAME
+        fromDatabase: { name: insight-giver-db, property: user }
+      - key: DATABASE_PASSWORD
+        fromDatabase: { name: insight-giver-db, property: password }
+      - key: REDIS_URL
+        fromService: { type: keyvalue, name: insight-giver-queue, property: connectionString }
+      - key: VOYAGE_API_KEY
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: APNS_TEAM_ID
+        sync: false
+      - key: APNS_KEY_ID
+        sync: false
+      # The .p8 key's PEM text, newlines included.
+      - key: APNS_PRIVATE_KEY
+        sync: false
+      - key: APNS_TOPIC
+        value: com.insightgiver.app
+      # Upload the Firebase service-account JSON as a secret file with this name.
+      - key: FIREBASE_CREDENTIALS_FILE
+        value: /etc/secrets/firebase-service-account.json
+
+  # Postgres is the source of truth for queued entries (the sweeper re-queues anything Redis
+  # loses), so the queue needs no persistence and the free instance is enough.
+  - type: keyvalue
+    name: insight-giver-queue
+    region: singapore
+    plan: free
+    # Evicting queued ids would only delay them until the sweeper runs; refusing writes is clearer.
+    maxmemoryPolicy: noeviction
+    # Reachable only from services in this account's private network.
+    ipAllowList: []
+
+databases:
+  - name: insight-giver-db
+    region: singapore
+    plan: basic-256mb
+    postgresMajorVersion: "17"
+    databaseName: insight_giver
+    user: insight_giver
+    # No outside access; connect with the Render shell or add your own address here.
+    ipAllowList: []

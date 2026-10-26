@@ -124,8 +124,9 @@ providers and fails at startup if a key is missing.
 
 | Variable                    | Default                                        | Notes                                                   |
 | --------------------------- | ---------------------------------------------- | ------------------------------------------------------- |
-| `DATABASE_URL`              | `jdbc:postgresql://localhost:5432/insight_giver` | also `DATABASE_USERNAME`, `DATABASE_PASSWORD`          |
+| `DATABASE_URL`              | `jdbc:postgresql://localhost:5432/insight_giver` | a JDBC URL, or its parts: `DATABASE_HOST`, `DATABASE_PORT`, `DATABASE_NAME`; also `DATABASE_USERNAME`, `DATABASE_PASSWORD` |
 | `REDIS_URL`                 | `redis://localhost:6379`                       |                                                         |
+| `PORT`                      | `8080`                                         | HTTP port                                               |
 | `EMBEDDING_PROVIDER`        | `voyage`                                       | `voyage` or `hashing` (offline stand-in, not for production) |
 | `VOYAGE_API_KEY`            |                                                | Voyage AI, model `voyage-4-lite` at 1024 dimensions     |
 | `INSIGHT_WRITER`            | `claude`                                       | `claude` or `template`                                  |
@@ -160,8 +161,26 @@ running. They drive the real pipeline: HTTP → Redis → `@Async` embedding →
 
 ## Deploying
 
-`./mvnw spring-boot:build-image` builds an OCI image. Run Redis with AOF persistence (as in
-`compose.yaml`). Several instances can share the database and Redis: queue pops, sweeper claims
-(`FOR UPDATE SKIP LOCKED`) and insight slots are all safe to run concurrently.
+The `Dockerfile` builds a self-contained image (`docker build .`; CI builds it on every push).
+The service has to stay up: the insight scheduler and the queue dispatcher run inside it, so a
+platform that scales to zero when idle would miss deliveries. Several instances can share the
+database and Redis (queue pops, sweeper claims with `FOR UPDATE SKIP LOCKED` and insight slots are
+all safe to run concurrently), but one is enough for a long while. Redis needs no persistence:
+Postgres is the source of truth, and the sweeper re-queues whatever Redis loses.
+
+`render.yaml` is a [Render](https://render.com) Blueprint for the whole stack, in one region on
+Render's private network:
+
+- the API as a Docker web service (starter, 512 MB);
+- Postgres 17 (basic-256mb). pgvector is available there, and `V1__init.sql` enables it;
+- a free Key Value instance for the queue.
+
+That is roughly US$13 a month. To set it up:
+
+1. In the dashboard, choose New > Blueprint and pick this repository.
+2. Enter the secrets it asks for: `VOYAGE_API_KEY`, `ANTHROPIC_API_KEY`, `APNS_TEAM_ID`,
+   `APNS_KEY_ID` and `APNS_PRIVATE_KEY`.
+3. Upload the Firebase service-account JSON as the secret file `firebase-service-account.json`.
+4. Point the app's `EXPO_PUBLIC_API_URL` at the service's `onrender.com` URL.
 
 Diary entries go to the embedding provider and, for recalled pairs, to the Claude API.
